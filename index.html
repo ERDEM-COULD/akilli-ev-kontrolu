@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akıllı Ev Kontrolü - LED Kontrolü</title>
+  <style>
+    /* Animasyonlu "Dinleniyor..." mesajı için stil */
+    #listeningMessage {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 5px solid #008CBA;
+      margin-top: 20px;
+      animation: pulseAnimation 1.5s infinite;
+      display: none;  /* Başlangıçta gizli */
+    }
+
+    @keyframes pulseAnimation {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.5);
+        opacity: 0.7;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    #listeningText {
+      font-size: 18px;
+      color: #008CBA;
+      margin-top: 10px;
+      display: none;  /* Başlangıçta gizli */
+    }
+
+    #connectionStatus {
+      font-size: 18px;
+      color: green;
+      display: none;  /* Başlangıçta gizli */
+    }
+  </style>
+</head>
+<body>
+  <h1>Akıllı Ev Kontrolü - LED Kontrolü</h1>
+  <button id="listenButton">Sesli Komutla Kontrol Et</button>
+  <p id="output"></p>
+  <!-- Dinleniyor Dairesi ve Yazısı -->
+  <div id="listeningMessage"></div>
+  <p id="listeningText">Dinleniyor...</p>
+  <!-- Bağlantı Durumu Mesajı -->
+  <p id="connectionStatus">Eşleşme tamamlandı, lütfen komut veriniz.</p>
+
+  <script>
+    // Sesli komutları almak için Web Speech API kullanıyoruz
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'tr-TR';  // Türkçe dil desteği
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    let port;  // Portu global değişken olarak tanımlıyoruz
+
+    // Portu sadece bir kez açacağız
+    async function openPort() {
+      try {
+        // Portu sadece sayfa yüklendiğinde bir kez açıyoruz
+        if (!port) {
+          port = await navigator.serial.requestPort();
+          await port.open({ baudRate: 9600 });
+          console.log("Port açıldı");
+          document.getElementById("connectionStatus").style.display = "block";  // Bağlantı tamamlandığında mesajı göster
+          speak("Eşleşme tamamlandı, lütfen komut veriniz."); // Sesli mesaj
+        }
+      } catch (error) {
+        console.error("Port açma hatası:", error);
+      }
+    }
+
+    recognition.onresult = function(event) {
+      const command = event.results[0][0].transcript.toLowerCase();
+      console.log('Komut:', command);
+      
+      // Komuta göre LED'i aç veya kapat
+      if (command.includes("aç")) {
+        sendCommand("turn on");
+        speak("Işık açıldı.");
+        document.getElementById("output").textContent = "Işık açıldı.";  // Yazılı geri bildirim
+      } else if (command.includes("kapa")) {
+        sendCommand("turn off");
+        speak("Işık kapandı.");
+        document.getElementById("output").textContent = "Işık kapandı.";  // Yazılı geri bildirim
+      } else {
+        speak("Komut algılanamadı.");
+        document.getElementById("output").textContent = "Komut algılanamadı.";  // Yazılı geri bildirim
+      }
+
+      // Dinleniyor animasyonunu durdur
+      document.getElementById("listeningMessage").style.display = "none"; 
+      document.getElementById("listeningText").style.display = "none"; 
+    };
+
+    recognition.onerror = function(event) {
+      // Komut algılanamadığında hata durumunu yakala
+      speak("Komut algılanamadı.");
+      document.getElementById("output").textContent = "Komut algılanamadı.";  // Yazılı geri bildirim
+
+      // Dinleniyor animasyonunu durdur
+      document.getElementById("listeningMessage").style.display = "none"; 
+      document.getElementById("listeningText").style.display = "none"; 
+    };
+
+    const listenButton = document.getElementById("listenButton");
+    listenButton.addEventListener("mousedown", function() {
+      // Dinleniyor animasyonunu göster
+      document.getElementById("listeningMessage").style.display = "block";
+      document.getElementById("listeningText").style.display = "block"; // Dinleniyor yazısını göster
+      recognition.start();  // Sesli komut dinlemeye başla
+    });
+
+    listenButton.addEventListener("mouseup", function() {
+      recognition.stop();  // Dinlemeyi durdur
+    });
+
+    // Web Serial API ile Arduino'ya komut gönderme
+    async function sendCommand(command) {
+      if (!port) {
+        // Port açılmadıysa, önce portu aç
+        await openPort();
+      }
+      
+      try {
+        const writer = port.writable.getWriter();
+        const encoder = new TextEncoder();
+        writer.write(encoder.encode(command));
+        writer.releaseLock();
+      } catch (error) {
+        console.error("Hata:", error);
+      }
+    }
+
+    // Sesli geri bildirim verme fonksiyonu
+    function speak(text) {
+      const speech = new SpeechSynthesisUtterance(text);
+      window.speechSynthesis.speak(speech);
+    }
+
+    // Sayfa yüklendiğinde bağlantıyı başlat
+    window.onload = function() {
+      openPort();  // Sayfa yüklendiğinde portu aç
+    };
+  </script>
+</body>
+</html>
